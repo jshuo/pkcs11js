@@ -5,23 +5,46 @@ const BN = require("bn.js");
 const { Transaction } = require("@ethereumjs/tx");
 const Common = require("@ethereumjs/common").default;
 const { Chain } = require("@ethereumjs/common");
-const Web3 = require("web3");
+
 const prompt = require("prompt-sync")();
 
-require("dotenv").config();
 
 // TODO: To complete this, find way to store keys and make wallet address always the same
 
-const PROVIDER = process.env.PROVIDER;
-const LIB = "/usr/local/lib/softhsm/libsofthsm2.so";
-const SLOT_PIN = process.env.SLOT_PIN;
-const SLOT_NO = Number(process.env.SLOT_NO);
 
-const web3 = new Web3(new Web3.providers.HttpProvider(PROVIDER));
+const SLOT_PIN = 1234
+const SLOT_NO = 0;
+const { Web3 } = require('web3');
 
+// // any eth-rpc-url you own or have access to
+const HTTP_PROVIDER = 'http://58.115.23.124:8545';
+const web3 = new Web3(new Web3.providers.HttpProvider(HTTP_PROVIDER));
+
+// HSM INIT
 const Module = graphene.Module;
-const mod = Module.load(LIB, "SoftHSM");
+
+// HSM LIB linux   e.g. /usr/local/lib/softhsm/libsofthsm2.so
+const SOFTHSM_LIB = '/usr/local/lib/softhsm/libsofthsm2.so';
+
+const mod = Module.load(SOFTHSM_LIB, 'SoftHSM');
+
+// init hsm module
 mod.initialize();
+
+// load your created slot
+const M_SLOT = 0;
+const slot = mod.getSlots(M_SLOT);
+
+// get session
+const session = slot.open(
+  graphene.SessionFlag.RW_SESSION | graphene.SessionFlag.SERIAL_SESSION
+);
+
+// your slot creation pins
+// login to session
+const M_PIN = '1234';
+session.login(M_PIN);
+
 
 function decodeECPointToPublicKey(data) {
   if (data.length === 0 || data[0] !== 4) {
@@ -80,42 +103,54 @@ function calculateEthSig(session, msgHash, ethAddr, privateKey) {
 async function main() {
   const slot = mod.getSlots(SLOT_NO);
   if (slot.flags & graphene.SlotFlag.TOKEN_PRESENT) {
-    const session = slot.open(
-      graphene.SessionFlag.RW_SESSION | graphene.SessionFlag.SERIAL_SESSION
-    );
-    session.login(SLOT_PIN);
+    // const session = slot.open(
+    //   graphene.SessionFlag.RW_SESSION | graphene.SessionFlag.SERIAL_SESSION
+    // );
+    // session.login(SLOT_PIN);
 
-    // Generate key pair
-    const keys = session.generateKeyPair(
-      graphene.KeyGenMechanism.ECDSA,
-      {
-        keyType: graphene.KeyType.ECDSA,
-        id: Buffer.from([1, 2, 3, 4, 5]), // Uniquer id for keys in storage https://www.cryptsoft.com/pkcs11doc/v230/group__SEC__9__7__KEY__OBJECTS.html
-        label: "publickey",
-        token: true,
-        verify: true,
-        paramsECDSA: graphene.NamedCurve.getByName("secp256k1").value,
-      },
-      {
-        keyType: graphene.KeyType.ECDSA,
-        id: Buffer.from([1, 2, 3, 4, 5]), // Uniquer id for keys in storage https://www.cryptsoft.com/pkcs11doc/v230/group__SEC__9__7__KEY__OBJECTS.html
-        label: "privatekey",
-        token: true,
-        sign: true,
-      }
-    );
+    // Look-up key pair by id
+    let mID = '3c736f6d652d69642d6f722d757569643e'; // ID from pkcs11-tool output
 
-    console.log("Key type:", graphene.KeyType[keys.privateKey.type]); // Key type: EC
-    console.log("Object's class:", graphene.ObjectClass[keys.privateKey.class]); // Object's class: PRIVATE_KEY
+    let hsmPbKeys = session.find({
+      class: graphene.ObjectClass.PUBLIC_KEY,
+      id: Buffer.from(mID, 'hex'),
+    });
+
+    let hsmPvKeys = session.find({
+      class: graphene.ObjectClass.PRIVATE_KEY,
+      id: Buffer.from(mID, 'hex'),
+    });
+
+    let validKeys = (hsmPbKeys.length == hsmPvKeys.length) == 1;
+    if (!validKeys) {
+      console.log('abort: validKeys');
+      return;
+    }
+
+    // now let us get the Raw Public Key used to create Bitcoin/Ethereum Address
+    let hsmPbKey = hsmPbKeys.items(0);
+
+    // the HSM Private Key Instance (do not contain the private key value)
+    let hsmPvKey = hsmPvKeys.items(0);
+
+    console.log("Key type:", graphene.KeyType[hsmPvKey.type]); // Key type: EC
+    console.log("Object's class:", graphene.ObjectClass[hsmPvKey.class]); // Object's class: PRIVATE_KEY
 
     // Extract public key and calculate ethereum address
 
-    // The first 3 bytes for uncompressed key
-    // https://datatracker.ietf.org/doc/html/rfc5480#section-2.2
-    const publicKey = decodeECPointToPublicKey(
-      keys.publicKey.getAttribute({ pointEC: null }).pointEC
-    );
-    const address = keccak256(publicKey);
+    let ecPoint = hsmPbKey.getAttribute('pointEC');
+
+    // According to ASN encoded value, the first 3 bytes are
+    //04 - OCTET STRING
+    //41 - Length 65 bytes
+    //For secp256k1 curve it's always 044104 at the beginning
+    if (ecPoint.length === 0 || ecPoint[0] !== 4) {
+      console.log('abort: only uncompressed point format supported');
+      return;
+    }
+    let rawPublicKey = ecPoint.slice(3, 67);
+    
+    const address = keccak256(rawPublicKey);
     const buf2 = Buffer.from(address, "hex");
     const ethAddr = `0x${buf2.slice(-20).toString("hex")}`; // Take last 20 bytes as Ethereum adress
     console.log("Generated Ethereum address:", ethAddr);
@@ -127,7 +162,7 @@ async function main() {
       session,
       msgHash,
       encodedMsg,
-      keys.privateKey
+      hsmPvKey
     );
     console.log("Verified Ethereum address:", {
       r: addressSign.r,
