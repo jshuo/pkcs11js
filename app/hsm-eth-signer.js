@@ -156,21 +156,6 @@ async function main() {
     console.log('Balance of Ethereum address:', web3.utils.fromWei(balance, 'ether'), 'ETH');
     console.log('Generated Ethereum address:', ethAddr);
 
-    // 1. Sign the ethereum address of the sender
-    const encodedMsg = ethAddr;
-    const msgHash = ethUtil.keccak256(Buffer.from(encodedMsg)); // Use Ethereum address for signing
-
-    //   const txParams = {
-    //     nonce: await web3.eth.getTransactionCount(ethAddr), // Change nonce everytime sending
-    //     gasPrice: "0x0918400000",
-    //     gasLimit: 160000,
-    //     to: "0x238fadd911b6F0C4e1Ba30f8ee514805e1736925",
-    //     value: "0x00",
-    //     data: ethUtil.bufferToHex(Buffer.from("krgko_hsm")),
-    //     r: addressSign.r,
-    //     s: addressSign.s,
-    //     v: addressSign.v,
-    //   };
 
     //   // https://github.com/ethereumjs/ethereumjs-monorepo/tree/master/packages/tx#legacy-transactions
     //   // https://github.com/ethereumjs/ethereumjs-monorepo/tree/master/packages/common
@@ -181,20 +166,18 @@ async function main() {
       networkId: 1981,
       comment: 'My Custom Chain',
     };
-
-    // const common = Common.custom(customChain);
-
-    // // Use the fromTxData method to create the transaction
-    // let tx = new EthereumTx(txParams, { common });
-
+    const nonce = await web3.eth.getTransactionCount("0x6eadd8ead83c227178faca699d5cded0c1171515");
+       // Convert 0.5 ETH to Wei
+    const valueInWei = web3.utils.toHex(web3.utils.toWei('0.5', 'ether'));
+    // Transaction Parameters
     const txParams = {
-      nonce: '0x00',
-      gasPrice: '0x09184e72a000',
-      gasLimit: '0x2710',
+      nonce: web3.utils.toHex(nonce),
+      gasPrice: web3.utils.toHex(web3.utils.toWei('50', 'gwei')),
+      gasLimit: web3.utils.toHex(21000),
       to: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-      value: '0x00',
-      data: '0x7f7465737432000000000000000000000000000000000000000000000000000000600057',
-    };
+      value: valueInWei,
+      data: '0x'
+   };
 
     // The second parameter is not necessary if these values are used
     const tx = new EthereumTx(txParams, customChain);
@@ -204,7 +187,7 @@ async function main() {
     // Example: Log the serialized transaction
 
     // 2. Sign the raw transaction
-    const addressSign = calculateEthSig(session, txHash, encodedMsg, hsmPvKey);
+    const addressSign = calculateEthSig(session, txHash, ethAddr, hsmPvKey);
     console.log('Verified Ethereum address:', {
       r: addressSign.r,
       s: addressSign.s,
@@ -217,6 +200,7 @@ async function main() {
 
     // Serialize and send the signed transaction
     const serializedTx = tx.serialize().toString('hex');
+    console.log('Serialized transaction:', serializedTx);
 
     // Due to every time exec it create new address
     let ans;
