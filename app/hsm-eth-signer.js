@@ -1,18 +1,16 @@
-const graphene = require("graphene-pk11");
-const { keccak256 } = require("js-sha3");
-const ethUtil = require("ethereumjs-util");
-const BN = require("bn.js");
-const { Transaction } = require("@ethereumjs/tx");
-const Common = require("@ethereumjs/common").default;
-const { Chain } = require("@ethereumjs/common");
+const graphene = require('graphene-pk11');
+const { keccak256 } = require('js-sha3');
+const ethUtil = require('ethereumjs-util');
+const BN = require('bn.js');
+const EthereumTx = require('ethereumjs-tx').Transaction;
+const { Common } = require('@ethereumjs/common');
+const { Chain } = require('@ethereumjs/common');
 
-const prompt = require("prompt-sync")();
-
+const prompt = require('prompt-sync')();
 
 // TODO: To complete this, find way to store keys and make wallet address always the same
 
-
-const SLOT_PIN = 1234
+const SLOT_PIN = 1234;
 const SLOT_NO = 0;
 const { Web3 } = require('web3');
 
@@ -45,10 +43,9 @@ const session = slot.open(
 const M_PIN = '1234';
 session.login(M_PIN);
 
-
 function decodeECPointToPublicKey(data) {
   if (data.length === 0 || data[0] !== 4) {
-    throw new Error("Only uncompressed point format supported");
+    throw new Error('Only uncompressed point format supported');
   }
   // ASN first 3 bytes
   // 04 - OCTET STRING, 41 - Length 65 bytes
@@ -63,12 +60,12 @@ function calculateEthSig(session, msgHash, ethAddr, privateKey) {
 
   // Not all EC signature is a valid signature
   while (flag) {
-    const sign = session.createSign("ECDSA", privateKey);
+    const sign = session.createSign('ECDSA', privateKey);
     tempSig = sign.once(msgHash);
     const _s = tempSig.slice(32, 64);
-    const sValue = new BN(_s.toString("hex"), 16); // Hex
+    const sValue = new BN(_s.toString('hex'), 16); // Hex
     const secp256k1N = new BN(
-      "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+      'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141',
       16
     ); // Max value on the curve
     const secp256k1halfN = secp256k1N.div(new BN(2));
@@ -94,7 +91,7 @@ function calculateEthSig(session, msgHash, ethAddr, privateKey) {
     recoveredEthAddr = ethUtil.bufferToHex(addrBuffer);
   }
 
-  console.log("Verify is equal:", { ethAddr, recoveredEthAddr });
+  console.log('Verify is equal:', { ethAddr, recoveredEthAddr });
 
   return { r: rs.r, s: rs.s, v: v };
 }
@@ -133,7 +130,7 @@ async function main() {
     // the HSM Private Key Instance (do not contain the private key value)
     let hsmPvKey = hsmPvKeys.items(0);
 
-    console.log("Key type:", graphene.KeyType[hsmPvKey.type]); // Key type: EC
+    console.log('Key type:', graphene.KeyType[hsmPvKey.type]); // Key type: EC
     console.log("Object's class:", graphene.ObjectClass[hsmPvKey.class]); // Object's class: PRIVATE_KEY
 
     // Extract public key and calculate ethereum address
@@ -149,83 +146,102 @@ async function main() {
       return;
     }
     let rawPublicKey = ecPoint.slice(3, 67);
-    
+
     const address = keccak256(rawPublicKey);
-    const buf2 = Buffer.from(address, "hex");
-    const ethAddr = `0x${buf2.slice(-20).toString("hex")}`; // Take last 20 bytes as Ethereum adress
-    console.log("Generated Ethereum address:", ethAddr);
+    const buf2 = Buffer.from(address, 'hex');
+    const ethAddr = `0x${buf2.slice(-20).toString('hex')}`; // Take last 20 bytes as Ethereum adress
+
+    // Get the balance of the generated Ethereum address
+    const balance = await web3.eth.getBalance(ethAddr);
+    console.log('Balance of Ethereum address:', web3.utils.fromWei(balance, 'ether'), 'ETH');
+    console.log('Generated Ethereum address:', ethAddr);
 
     // 1. Sign the ethereum address of the sender
     const encodedMsg = ethAddr;
     const msgHash = ethUtil.keccak256(Buffer.from(encodedMsg)); // Use Ethereum address for signing
-    const addressSign = calculateEthSig(
-      session,
-      msgHash,
-      encodedMsg,
-      hsmPvKey
-    );
-    console.log("Verified Ethereum address:", {
-      r: addressSign.r,
-      s: addressSign.s,
-      v: addressSign.v,
-    });
 
-    const txParams = {
-      nonce: await web3.eth.getTransactionCount(ethAddr), // Change nonce everytime sending
-      gasPrice: "0x0918400000",
-      gasLimit: 160000,
-      to: "0x238fadd911b6F0C4e1Ba30f8ee514805e1736925",
-      value: "0x00",
-      data: ethUtil.bufferToHex(Buffer.from("krgko_hsm")),
-      r: addressSign.r,
-      s: addressSign.s,
-      v: addressSign.v,
+    //   const txParams = {
+    //     nonce: await web3.eth.getTransactionCount(ethAddr), // Change nonce everytime sending
+    //     gasPrice: "0x0918400000",
+    //     gasLimit: 160000,
+    //     to: "0x238fadd911b6F0C4e1Ba30f8ee514805e1736925",
+    //     value: "0x00",
+    //     data: ethUtil.bufferToHex(Buffer.from("krgko_hsm")),
+    //     r: addressSign.r,
+    //     s: addressSign.s,
+    //     v: addressSign.v,
+    //   };
+
+    //   // https://github.com/ethereumjs/ethereumjs-monorepo/tree/master/packages/tx#legacy-transactions
+    //   // https://github.com/ethereumjs/ethereumjs-monorepo/tree/master/packages/common
+
+    const customChain = {
+      name: 'customchain1981',
+      chainId: 1981,
+      networkId: 1981,
+      comment: 'My Custom Chain',
     };
 
-    // https://github.com/ethereumjs/ethereumjs-monorepo/tree/master/packages/tx#legacy-transactions
-    // https://github.com/ethereumjs/ethereumjs-monorepo/tree/master/packages/common
-    const common = new Common({ chain: Chain.Rinkeby });
-    const tx = new Transaction(txParams, { common, freeze: false });
-    const txHash = tx.getMessageToSign();
+    // const common = Common.custom(customChain);
+
+    // // Use the fromTxData method to create the transaction
+    // let tx = new EthereumTx(txParams, { common });
+
+    const txParams = {
+      nonce: '0x00',
+      gasPrice: '0x09184e72a000',
+      gasLimit: '0x2710',
+      to: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+      value: '0x00',
+      data: '0x7f7465737432000000000000000000000000000000000000000000000000000000600057',
+    };
+
+    // The second parameter is not necessary if these values are used
+    const tx = new EthereumTx(txParams, customChain);
+
+    const txHash = tx.hash(false);
+
+    // Example: Log the serialized transaction
 
     // 2. Sign the raw transaction
-    const txSig = calculateEthSig(session, txHash, ethAddr, keys.privateKey);
-    tx.r = new BN(txSig.r);
-    tx.s = new BN(txSig.s);
-    tx.v = new BN(txSig.v);
-
-    const serializedTx = tx.serialize().toString("hex");
-    console.log("Signed transaction:", {
-      raw: tx.toJSON(),
-      sender: ethUtil.bufferToHex(
-        ethUtil.pubToAddress(tx.getSenderPublicKey())
-      ),
-      serializedTx,
-      txHash: txHash.toString("hex"),
+    const addressSign = calculateEthSig(session, txHash, encodedMsg, hsmPvKey);
+    console.log('Verified Ethereum address:', {
+      r: addressSign.r,
+      s: addressSign.s,
+      v: addressSign.v,
     });
+    // Attach the signature to the transaction
+    tx.r = addressSign.r;
+    tx.s = addressSign.s;
+    tx.v = addressSign.v;
+
+    // Serialize and send the signed transaction
+    const serializedTx = tx.serialize().toString('hex');
 
     // Due to every time exec it create new address
     let ans;
-    while (ans !== "y") {
-      ans = prompt(`Did you fund ${ethAddr} already? [at lease 0.5ETH] (y/n): `);
-      if (ans === "y" || ans === "Y") {
-        console.log("Sending transaction ...");
+    while (ans !== 'y') {
+      ans = prompt(
+        `Did you fund ${ethAddr} already? [at lease 0.5ETH] (y/n): `
+      );
+      if (ans === 'y' || ans === 'Y') {
+        console.log('Sending transaction ...');
         web3.eth
-          .sendSignedTransaction("0x" + serializedTx)
-          .on("confirmation", function (confirmationNumber, receipt) {
-            console.log("Confirmation:", confirmationNumber);
-            console.log("Receipt to return:", receipt);
+          .sendSignedTransaction('0x' + serializedTx)
+          .on('confirmation', function (confirmationNumber, receipt) {
+            console.log('Confirmation:', confirmationNumber);
+            console.log('Receipt to return:', receipt);
           })
-          .on("receipt", (txReceipt) => {
+          .on('receipt', (txReceipt) => {
             console.log(
-              "Sign and sendTx txReceipt, transaction hash: " +
+              'Sign and sendTx txReceipt, transaction hash: ' +
                 txReceipt.transactionHash
             );
           })
-          .on("error", console.error);
+          .on('error', console.error);
         return;
       }
-      if (ans === "n" || ans === "N") {
+      if (ans === 'n' || ans === 'N') {
         return;
       }
     }
@@ -233,7 +249,7 @@ async function main() {
     session.logout();
     session.close();
   } else {
-    console.log("Error: cannot found available slot");
+    console.log('Error: cannot found available slot');
   }
 
   mod.finalize();
