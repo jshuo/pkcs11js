@@ -23,12 +23,15 @@ async function main() {
 
     const nonce = await web3.eth.getTransactionCount(ethAddr);
     console.log('Nonce:', nonce);
+    const weiValue = web3.utils.toWei('1', 'ether'); // Correct conversion to Wei
+    const hexValue = web3.utils.toHex(BigInt(weiValue)); // Convert to BigInt to ensure it's treated as a number
+
     const txParams = {
         nonce: web3.utils.toHex(nonce),
         gasPrice: "0x4a817c800",
-        gasLimit: "0x5208",  // Standard gas limit for ETH transfers
+        gasLimit: web3.utils.toHex(21000),  // Standard gas limit for ETH transfers
         to: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-        value: '0xDE0B6B3A7640000',  
+        value: hexValue,  
         data: '0x'
     };
 
