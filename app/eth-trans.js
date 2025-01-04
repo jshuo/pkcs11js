@@ -25,10 +25,10 @@ async function main() {
     console.log('Nonce:', nonce);
     const weiValue = web3.utils.toWei('1', 'ether'); // Correct conversion to Wei
     const hexValue = web3.utils.toHex(BigInt(weiValue)); // Convert to BigInt to ensure it's treated as a number
-
+    const gasPrice = await web3.eth.getGasPrice();
     const txParams = {
         nonce: web3.utils.toHex(nonce),
-        gasPrice: "0x4a817c800",
+        gasPrice: web3.utils.toHex(gasPrice),
         gasLimit: web3.utils.toHex(21000),  // Standard gas limit for ETH transfers
         to: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
         value: hexValue,  
