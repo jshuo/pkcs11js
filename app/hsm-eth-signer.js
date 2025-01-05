@@ -106,7 +106,7 @@ async function main() {
     // session.login(SLOT_PIN);
 
     // Look-up key pair by id
-    let mID = '101564'; // ID from pkcs11-tool output
+    let mID = '00'; // ID from pkcs11-tool output
 
 
     let hsmPbKeys = session.find({
@@ -149,26 +149,28 @@ async function main() {
     const address = keccak256(rawPublicKey);
     const buf2 = Buffer.from(address, 'hex');
     const EthAddr = `0x${buf2.slice(-20).toString('hex')}`;
+    console.log('Ethereum address:', EthAddr);
     //First sign : sign the ethreum address of the sender
     encoded_msg = EthAddr;
-  
+    
     // console.log last 10 transactions of EthAddr
     // getLastTransactions(EthAddr, 10);
-  
+    const balance = await web3.eth.getBalance(EthAddr);
+    console.log('Balance:', balance);
   
     let msgHash = util.keccak(Buffer.from(encoded_msg, 'hex')); // msg to be signed is the generated ethereum address
     addressSign = calculateEthereumSig(msgHash, EthAddr, Pkeys);
     const weiValue = web3.utils.toWei('1', 'ether'); // Correct conversion to Wei
     const hexValue = web3.utils.toHex(BigInt(weiValue)); // Convert to BigInt to ensure it's treated as a number
-
+    const gasPrice = await web3.eth.getGasPrice();
     const nonce = await web3.eth.getTransactionCount(EthAddr);
     console.log('Nonce:', nonce);
     //using the r,s,v value from the first signautre in the transaction parameter
     const txParams = {
       nonce: web3.utils.toHex(nonce),
-      gasPrice: "0x0918400000",
-      gasLimit: 160000,
-      to: "0x49FE9C5e2619A093fABf1D5653D2Cda191EC5600",
+      gasPrice: web3.utils.toHex(gasPrice),
+      gasLimit: 210000,
+      to: "0xfC10126E2F41cbB264BceEE6c6093133AA45f317",
       value: hexValue,
       data: "0x00",
       r: addressSign.r, // using r from the first signature
