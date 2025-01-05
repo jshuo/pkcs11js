@@ -1,7 +1,7 @@
 const graphene = require('graphene-pk11');
 const { keccak256 } = require('js-sha3');
-const ethUtil = require('ethereumjs-util');
-const BN = require('bn.js');
+const util = require("ethereumjs-util");
+const BigNumber = require("bignumber.js");
 const EthereumTx = require('ethereumjs-tx').Transaction;
 const { Common } = require('@ethereumjs/common');
 const { Chain } = require('@ethereumjs/common');
@@ -53,22 +53,26 @@ function decodeECPointToPublicKey(data) {
   return data.slice(3, 67);
 }
 
-function calculateEthSig(session, msgHash, ethAddr, privateKey) {
+const calculateEthereumSig = (msgHash, EthreAddr, privateKey) => {
+  ///////////////////////////////////////////////////////////////////////////////////////////////
+  // Contiue Signing until find s < (secp256k1.size/2)
+  ///////////////////////////////////////////////////////////////////////////////////////////////
   // Continue signing until find s < (secp256k1.size/2)
   let flag = true;
   let tempSig;
 
   // Not all EC signature is a valid signature
   while (flag) {
+    
     const sign = session.createSign('ECDSA', privateKey);
     tempSig = sign.once(msgHash);
     const _s = tempSig.slice(32, 64);
-    const sValue = new BN(_s.toString('hex'), 16); // Hex
-    const secp256k1N = new BN(
+    const sValue = new BigNumber(_s.toString('hex'), 16); // Hex
+    const secp256k1N = new BigNumber(
       'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141',
       16
     ); // Max value on the curve
-    const secp256k1halfN = secp256k1N.div(new BN(2));
+    const secp256k1halfN = secp256k1N.div(new BigNumber(2));
     if (sValue.lt(secp256k1halfN)) {
       flag = false;
     }
@@ -78,21 +82,17 @@ function calculateEthSig(session, msgHash, ethAddr, privateKey) {
     r: tempSig.slice(0, 32),
     s: tempSig.slice(32, 64),
   };
-
   let v = 27;
-  let publicKey = ethUtil.ecrecover(ethUtil.toBuffer(msgHash), v, rs.r, rs.s);
-  let addrBuffer = ethUtil.pubToAddress(publicKey);
-  let recoveredEthAddr = ethUtil.bufferToHex(addrBuffer);
+  let pubKey = util.ecrecover(util.toBuffer(msgHash), v, rs.r, rs.s);
+  let addrBuf = util.pubToAddress(pubKey);
+  let RecoveredEthAddr = util.bufferToHex(addrBuf);
 
-  if (ethAddr !== recoveredEthAddr) {
+  if (EthreAddr != RecoveredEthAddr) {
     v = 28;
-    publicKey = ethUtil.ecrecover(ethUtil.toBuffer(msgHash), v, rs.r, rs.s);
-    addrBuffer = ethUtil.pubToAddress(publicKey);
-    recoveredEthAddr = ethUtil.bufferToHex(addrBuffer);
+    pubKey = util.ecrecover(util.toBuffer(msgHash), v, rs.r, rs.s);
+    addrBuf = util.pubToAddress(pubKey);
+    RecoveredEthAddr = util.bufferToHex(addrBuf);
   }
-
-  console.log('Verify is equal:', { ethAddr, recoveredEthAddr });
-
   return { r: rs.r, s: rs.s, v: v };
 }
 
@@ -106,7 +106,8 @@ async function main() {
     // session.login(SLOT_PIN);
 
     // Look-up key pair by id
-    let mID = '3c736f6d652d69642d6f722d757569643e'; // ID from pkcs11-tool output
+    let mID = '101564'; // ID from pkcs11-tool output
+
 
     let hsmPbKeys = session.find({
       class: graphene.ObjectClass.PUBLIC_KEY,
@@ -128,10 +129,8 @@ async function main() {
     let hsmPbKey = hsmPbKeys.items(0);
 
     // the HSM Private Key Instance (do not contain the private key value)
-    let hsmPvKey = hsmPvKeys.items(0);
+    let Pkeys = hsmPvKeys.items(0);
 
-    console.log('Key type:', graphene.KeyType[hsmPvKey.type]); // Key type: EC
-    console.log("Object's class:", graphene.ObjectClass[hsmPvKey.class]); // Object's class: PRIVATE_KEY
 
     // Extract public key and calculate ethereum address
 
@@ -149,64 +148,61 @@ async function main() {
 
     const address = keccak256(rawPublicKey);
     const buf2 = Buffer.from(address, 'hex');
-    const ethAddr = `0x${buf2.slice(-20).toString('hex')}`; // Take last 20 bytes as Ethereum adress
+    const EthAddr = `0x${buf2.slice(-20).toString('hex')}`;
+    //First sign : sign the ethreum address of the sender
+    encoded_msg = EthAddr;
+  
+    // console.log last 10 transactions of EthAddr
+    // getLastTransactions(EthAddr, 10);
+  
+  
+    let msgHash = util.keccak(Buffer.from(encoded_msg, 'hex')); // msg to be signed is the generated ethereum address
+    addressSign = calculateEthereumSig(msgHash, EthAddr, Pkeys);
+    const weiValue = web3.utils.toWei('1', 'ether'); // Correct conversion to Wei
+    const hexValue = web3.utils.toHex(BigInt(weiValue)); // Convert to BigInt to ensure it's treated as a number
 
-    // Get the balance of the generated Ethereum address
-    const balance = await web3.eth.getBalance(ethAddr);
-    console.log('Balance of Ethereum address:', web3.utils.fromWei(balance, 'ether'), 'ETH');
-    console.log('Generated Ethereum address:', ethAddr);
-
-
-    //   // https://github.com/ethereumjs/ethereumjs-monorepo/tree/master/packages/tx#legacy-transactions
-    //   // https://github.com/ethereumjs/ethereumjs-monorepo/tree/master/packages/common
-
+    const nonce = await web3.eth.getTransactionCount(EthAddr);
+    console.log('Nonce:', nonce);
+    //using the r,s,v value from the first signautre in the transaction parameter
+    const txParams = {
+      nonce: web3.utils.toHex(nonce),
+      gasPrice: "0x0918400000",
+      gasLimit: 160000,
+      to: "0x49FE9C5e2619A093fABf1D5653D2Cda191EC5600",
+      value: hexValue,
+      data: "0x00",
+      r: addressSign.r, // using r from the first signature
+      s: addressSign.s, // using s from the first signature
+      v: addressSign.v,
+    };
+  
+    console.log(txParams);
+    
     const customChain = {
       name: 'customchain1981',
       chainId: 1981,
       networkId: 1981,
       comment: 'My Custom Chain',
     };
-    const nonce = await web3.eth.getTransactionCount("0x6eadd8ead83c227178faca699d5cded0c1171515");
-       // Convert 0.5 ETH to Wei
-    const valueInWei = web3.utils.toHex(web3.utils.toWei('0.5', 'ether'));
-    // Transaction Parameters
-    const txParams = {
-      nonce: web3.utils.toHex(nonce),
-      gasPrice: web3.utils.toHex(web3.utils.toWei('50', 'gwei')),
-      gasLimit: web3.utils.toHex(21000),
-      to: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-      value: valueInWei,
-      data: '0x'
-   };
-
-    // The second parameter is not necessary if these values are used
+  
     const tx = new EthereumTx(txParams, customChain);
-
-    const txHash = tx.hash(false);
-
-    // Example: Log the serialized transaction
-
-    // 2. Sign the raw transaction
-    const addressSign = calculateEthSig(session, txHash, ethAddr, hsmPvKey);
-    console.log('Verified Ethereum address:', {
-      r: addressSign.r,
-      s: addressSign.s,
-      v: addressSign.v,
-    });
-    // Attach the signature to the transaction
-    tx.r = addressSign.r;
-    tx.s = addressSign.s;
-    tx.v = addressSign.v;
-
-    // Serialize and send the signed transaction
-    const serializedTx = tx.serialize().toString('hex');
-    console.log('Serialized transaction:', serializedTx);
+  
+    msgHash = tx.hash(false);
+  
+  
+    //Second sign: sign the raw transactions
+    const txSig = calculateEthereumSig(msgHash, EthAddr, Pkeys);
+    tx.r = txSig.r;
+    tx.s = txSig.s;
+    tx.v = txSig.v;
+  
+    const serializedTx = tx.serialize().toString("hex");
 
     // Due to every time exec it create new address
     let ans;
     while (ans !== 'y') {
       ans = prompt(
-        `Did you fund ${ethAddr} already? [at lease 0.5ETH] (y/n): `
+        `Did you fund ${EthAddr} already? [at lease 0.5ETH] (y/n): `
       );
       if (ans === 'y' || ans === 'Y') {
         console.log('Sending transaction ...');
