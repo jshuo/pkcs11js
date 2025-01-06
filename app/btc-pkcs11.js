@@ -18,12 +18,12 @@ try {
         { type: pkcs11.CKA_ECDSA_PARAMS, value: Buffer.from([0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A]) }, // secp256k1 curve OID
         { type: pkcs11.CKA_LABEL, value: "MyKeyLabel" },
         { type: pkcs11.CKA_DERIVE, value: true },
-        { type: pkcs11.CKA_TOKEN, value: true }
+        // { type: pkcs11.CKA_TOKEN, value: true }
     ], [
         { type: pkcs11.CKA_CLASS, value: pkcs11.CKO_PRIVATE_KEY },
         { type: pkcs11.CKA_LABEL, value: "MyKeyLabel" },
         { type: pkcs11.CKA_DERIVE, value: true },
-        { type: pkcs11.CKA_TOKEN, value: true }
+        // { type: pkcs11.CKA_TOKEN, value: true }
     ]);
     // Find the public key object
     pkcs11Lib.C_FindObjectsInit(session, [
