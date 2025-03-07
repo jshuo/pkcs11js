@@ -23,7 +23,7 @@ const regtest = {
 
 var pkcs11Lib = new pkcs11.PKCS11();
 pkcs11Lib.load('/usr/local/lib/softhsm/libsofthsm2.so');
-let compressedPublicKey;;
+let compressedPublicKey;
 pkcs11Lib.C_Initialize();
 try {
   const slots = pkcs11Lib.C_GetSlotList(true);
@@ -45,58 +45,26 @@ try {
 
   console.log('Session opened and logged in.');
 
-  // Define secp256k1 parameters
-  const keyTemplatePublic = [
+  // get token id and label
+  const tokenInfo = pkcs11Lib.C_GetTokenInfo(slot);
+  console.log('Token ID:', tokenInfo.tokenID);
+  console.log('Token Label:', tokenInfo.label);
+  // Look-up key pair by id
+  let mID =
+    '66646566356137372d643634312d346334392d393738332d666439643836383462396534'; // ID from pkcs11-tool output
+  // get public key
+  let hsmPbKeys = pkcs11Lib.C_FindObjectsInit(session, [
+    { type: pkcs11.CKA_ID, value: Buffer.from(mID, 'hex') },
     { type: pkcs11.CKA_CLASS, value: pkcs11.CKO_PUBLIC_KEY },
-    { type: pkcs11.CKA_KEY_TYPE, value: pkcs11.CKK_EC },
-    { type: pkcs11.CKA_EC_PARAMS, value: Buffer.from('06052b8104000a', 'hex') }, // OID for secp256k1
-    { type: pkcs11.CKA_VERIFY, value: true },
-  ];
-
-  const keyTemplatePrivate = [
-    { type: pkcs11.CKA_CLASS, value: pkcs11.CKO_PRIVATE_KEY },
-    { type: pkcs11.CKA_KEY_TYPE, value: pkcs11.CKK_EC },
-    { type: pkcs11.CKA_SIGN, value: true },
-    { type: pkcs11.CKA_PRIVATE, value: true },
-  ];
-
-  const keyPair = pkcs11Lib.C_GenerateKeyPair(
-    session,
-    { mechanism: pkcs11.CKM_EC_KEY_PAIR_GEN },
-    keyTemplatePublic,
-    keyTemplatePrivate
-  );
-  console.log('Key pair generated.');
-  // Get public key attributes
-  const publicKeyAttributes = [{ type: pkcs11.CKA_EC_POINT }];
-
-  const publicKeyValue = pkcs11Lib.C_GetAttributeValue(
-    session,
-    keyPair.publicKey,
-    publicKeyAttributes
-  );
-
-  // Decode ASN.1 (remove first byte which is ASN.1 tag for EC Point)
-  let publicKeyDER = publicKeyValue[0].value;
-  let publicKeyRaw = publicKeyDER.slice(2); // Remove ASN.1 header
-
-  console.log('Raw Uncompressed Public Key:', publicKeyRaw.toString('hex'));
-
-  // Extract X and Y coordinates
-  const x = publicKeyRaw.slice(0, 32);
-  const y = publicKeyRaw.slice(32, 64);
-
-  // Determine if Y is even or odd
-  const prefix =
-    y[y.length - 1] % 2 === 0 ? Buffer.from([0x02]) : Buffer.from([0x03]);
-
-  // Compressed public key format: 0x02 (even Y) or 0x03 (odd Y) + X coordinate
-    compressedPublicKey = Buffer.concat([prefix, x]);
-
-  console.log(
-    'Compressed Bitcoin Public Key:',
-    compressedPublicKey.toString('hex')
-  );
+  ]);
+  let hsmPbKey = pkcs11Lib.C_FindObjects(session, 1)[0];
+  let hsmPbKeyAttr = pkcs11Lib.C_GetAttributeValue(session, hsmPbKey, [
+    { type: pkcs11.CKA_EC_POINT },
+  ])[0];
+  const uncompressedPublicKey = Buffer.from(hsmPbKeyAttr.value).slice(2); // Remove the first two bytes (0x04 prefix)
+  compressedPublicKey = ecc.pointCompress(uncompressedPublicKey, true);
+  console.log('Public Key:', compressedPublicKey.toString('hex'));
+  pkcs11Lib.C_FindObjectsFinal(session);
 
   pkcs11Lib.C_Logout(session);
   pkcs11Lib.C_CloseSession(session);
@@ -117,9 +85,9 @@ const keyPair3 = ECPair.makeRandom();
 
 // Convert Uint8Array to Buffer (fix for p2ms)
 const pubkeys = [
-  compressedPublicKey,
-  Buffer.from(keyPair2.publicKey),
-  Buffer.from(keyPair3.publicKey),
+  Buffer.from(compressedPublicKey),
+  Buffer.from(compressedPublicKey),
+  Buffer.from(compressedPublicKey),
 ];
 
 console.log(
@@ -141,7 +109,7 @@ console.log('Private Key 3 (WIF):', keyPair3.toWIF());
 
 // Send some funds to the multisig address
 exec(
-  `bitcoin-cli -regtest -rpcwallet=test_wallet sendtoaddress ${address} 0.001`,
+  `bitcoin-cli -regtest -rpcwallet=test_wallet sendtoaddress ${address} 0.5`,
   (err, stdout, stderr) => {
     if (err) {
       console.error('Error:', err);
@@ -155,7 +123,7 @@ exec(
 // use bitcoinjs-lib to get the balance of the multisig address
 
 // Multisig address to check
-const MULTISIG_ADDRESS = '2NCNZkMhFcNdgeUEfgaHjCPcKSbZMdoUbq1';
+const MULTISIG_ADDRESS = address;
 
 // Bitcoin Core RPC Call
 async function callBitcoinRPC(method, params = []) {
