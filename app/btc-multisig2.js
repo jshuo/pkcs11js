@@ -61,9 +61,20 @@ try {
   let hsmPbKeyAttr = pkcs11Lib.C_GetAttributeValue(session, hsmPbKey, [
     { type: pkcs11.CKA_EC_POINT },
   ])[0];
+  
+  // Finalize the previous find operation
+  pkcs11Lib.C_FindObjectsFinal(session);
+
+  // get private key
+  pkcs11Lib.C_FindObjectsInit(session, [
+    { type: pkcs11.CKA_ID, value: Buffer.from(mID, 'hex') },
+    { type: pkcs11.CKA_CLASS, value: pkcs11.CKO_PRIVATE_KEY },
+  ]);
+  let hsmPvKey = pkcs11Lib.C_FindObjects(session, 1)[0];
+  console.log('Private Key Handle:', hsmPvKey);
+
   const uncompressedPublicKey = Buffer.from(hsmPbKeyAttr.value).slice(2); // Remove the first two bytes (0x04 prefix)
   compressedPublicKey = ecc.pointCompress(uncompressedPublicKey, true);
-  console.log('Public Key:', compressedPublicKey.toString('hex'));
   pkcs11Lib.C_FindObjectsFinal(session);
 
   // Generate Bitcoin address (Bitcoin uses secp256k1)
@@ -72,6 +83,64 @@ try {
     network: bitcoin.networks.regtest, // Change to bitcoin.networks.bitcoin for mainnet
   }).address;
   console.log('Bitcoin Address:', address);
+
+  var psbt = new bitcoin.Psbt({ network: bitcoin.networks.regtest });
+
+  psbt.addInput({
+    hash: '2e389c7d7c384f35a5afafc10987068aeb683a6834b09388d86b12959210190f',
+    index: 0,
+    witnessUtxo: {
+      script: Buffer.from(
+        '76a914cc2873d569108254e4e6fb29ac2994dd8175b52c88ac',
+        'hex'
+      ),
+      value: 2000000000,
+    },
+  });
+
+  psbt.addOutput({
+    address: 'mz8SbsgeyuVuV9dKgdKifcYgCLnNTB3uYv',
+    value: 10000,
+  });
+
+  // Sign the transaction
+  var sighash = psbt.__CACHE.__TX.hashForSignature(
+    0,
+    psbt.__CACHE.__TX.ins[0].script,
+    0,
+    bitcoin.Transaction.SIGHASH_ALL
+  );
+  pkcs11Lib.C_SignInit(
+    session,
+    { mechanism: pkcs11.CKM_ECDSA },
+    hsmPvKey
+  );
+  var txSignature = Buffer.alloc(64);
+  pkcs11Lib.C_Sign(session, sighash, txSignature);
+  // Add the signature to the input
+  var signatureScript = bitcoin.script.signature.encode(
+    txSignature,
+    bitcoin.Transaction.SIGHASH_ALL
+  );
+  psbt.updateInput(0, {
+    partialSig: [
+      {
+        pubkey: Buffer.from(compressedPublicKey),
+        signature: Buffer.from(signatureScript),
+      },
+    ],
+  });
+  psbt.updateInput(0, {
+    finalScriptSig: bitcoin.script.compile([
+      bitcoin.script.signature.encode(
+        txSignature,
+        bitcoin.Transaction.SIGHASH_ALL
+      ),
+      Buffer.from(compressedPublicKey),
+    ]),
+  });
+  var tx = psbt.extractTransaction();
+  console.log('Signed Transaction:', tx.toHex());
 
   pkcs11Lib.C_Logout(session);
   pkcs11Lib.C_CloseSession(session);
@@ -116,7 +185,7 @@ console.log('Private Key 3 (WIF):', keyPair3.toWIF());
 
 // Send some funds to the multisig address
 exec(
-  `bitcoin-cli -regtest -rpcwallet=test_wallet sendtoaddress ${address} 0.5`,
+  `bitcoin-cli -regtest -rpcwallet=test_wallet sendtoaddress ${address} 0.02`,
   (err, stdout, stderr) => {
     if (err) {
       console.error('Error:', err);
