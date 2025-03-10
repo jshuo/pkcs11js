@@ -77,63 +77,50 @@ try {
   compressedPublicKey = ecc.pointCompress(uncompressedPublicKey, true);
   pkcs11Lib.C_FindObjectsFinal(session);
 
-  // Generate Bitcoin address (Bitcoin uses secp256k1)
   const address = bitcoin.payments.p2pkh({
     pubkey: Buffer.from(compressedPublicKey),
-    network: bitcoin.networks.regtest, // Change to bitcoin.networks.bitcoin for mainnet
+    network: bitcoin.networks.regtest, // Change for mainnet
   }).address;
-  console.log('Bitcoin Address:', address);
-
+  console.log("Bitcoin Address:", address);
+  
   var psbt = new bitcoin.Psbt({ network: bitcoin.networks.regtest });
   
-  const inputTxHex = "02000000000104498a73c6988bb4832f7135ba6b015399a29bd892898f536dd01e63a1a4cc6cad0000000017160014010cf16a229a6e0b993206e745c7396bc7ec195afdffffff121e85892be6a3b73e92a7ce3f409dfca81f4117320c53b500dadc59f309a1350000000017160014a910b7e5baaadc15aaaa080104b36bf16dcc19b2fdffffff22dc63853cb218a62c2dd1534231c47e3be98493942046d3eca7fc51a74335240000000017160014587f8dbab23108a1a81596f3c809e857de1aa07bfdfffffff8cb00d9628815bb20eed0b9fafc4dac08f2393aa481ceaa49a962b811b44682000000001716001419bdd57fcc6a1938095e6fc5848aac9294119d26fdffffff0200943577000000001976a914cc2873d569108254e4e6fb29ac2994dd8175b52c88acc6b4ae03000000001976a9148d66427bcd8cd08d4d6b47d681839c1850afa74288ac0247304402203a606b7539d22c893bf28df0a5ca2539076150295cbec8685e899ec597b758ed0220147ddf5e28216e607650188b8e70ae59c2471191c02054267ff685da7b1bc3880121020125ec401c3c68d13356cce8eabb8fe6b33792bf08bf9db583665793bf5c24040247304402200366ce1bfb5aab265dfa1f8b58953f135f1cd27f34679a39c6fab8c0d64cb66d02204aff8552a6c25a9d39df7e4f3baab33d817159bb938d38fc83ec67c611070ec301210365352b2d71c520fd6549e3c1eac059bd1721f921c2842e1212518dbf1bd7723f0246304302202ddda17edf25b68d53fc239b439839377e1c7c4ead80c105ac8a3328c1bfbc35021f429144133e63f831ba600d896667ac17af9fe53b82fc895d936529fc9c3849012102295438dfbf4a5e6cc9cd8151ca2b3b644626ee6a8a166570f5783e521e492d71024730440220656f99d5bca7f3bed28360c62f18c6075cc92eb3967bf4bb845522030a7325c0022020409215b89a9e3a4132365932e9be43a011d0a7a4c2b031997bbd7b06876617012102bde436354aa78c867549d9fecbbd8d41ca2d564dd769ca52ea647c1c3a8cd57c212a0000";
+  const inputTxHex = "02000000000104498a73c6988bb4832f7135ba6b015399a29bd892898f536dd01e63a1a4cc6cad0000000017160014010cf16a229a6e0b993206e745c7396bc7ec195afdffffff121e85892be6a3b73e92a7ce3f409dfca81f4117320c53b500dadc59f309a1350000000017160014a910b7e5baaadc15aaaa080104b36bf16dcc19b2fdffffff22dc63853cb218a62c2dd1534231c47e3be98493942046d3eca7fc51a74335240000000017160014587f8dbab23108a1a81596f3c809e857de1aa07bfdfffffff8cb00d9628815bb20eed0b9fafc4dac08f2393aa481ceaa49a962b811b44682000000001716001419bdd57fcc6a1938095e6fc5848aac9294119d26fdffffff0200943577000000001976a914cc2873d569108254e4e6fb29ac2994dd8175b52c88acc6b4ae03000000001976a9148d66427bcd8cd08d4d6b47d681839c1850afa74288ac0247304402203a606b7539d22c893bf28df0a5ca2539076150295cbec8685e899ec597b758ed0220147ddf5e28216e607650188b8e70ae59c2471191c02054267ff685da7b1bc3880121020125ec401c3c68d13356cce8eabb8fe6b33792bf08bf9db583665793bf5c24040247304402200366ce1bfb5aab265dfa1f8b58953f135f1cd27f34679a39c6fab8c0d64cb66d02204aff8552a6c25a9d39df7e4f3baab33d817159bb938d38fc83ec67c611070ec301210365352b2d71c520fd6549e3c1eac059bd1721f921c2842e1212518dbf1bd7723f0246304302202ddda17edf25b68d53fc239b439839377e1c7c4ead80c105ac8a3328c1bfbc35021f429144133e63f831ba600d896667ac17af9fe53b82fc895d936529fc9c3849012102295438dfbf4a5e6cc9cd8151ca2b3b644626ee6a8a166570f5783e521e492d71024730440220656f99d5bca7f3bed28360c62f18c6075cc92eb3967bf4bb845522030a7325c0022020409215b89a9e3a4132365932e9be43a011d0a7a4c2b031997bbd7b06876617012102bde436354aa78c867549d9fecbbd8d41ca2d564dd769ca52ea647c1c3a8cd57c212a0000"; // Ensure full raw transaction hex
   
-  // Define Input UTXO (Non-Witness UTXO since it's P2PKH)
   psbt.addInput({
-    hash: "2e389c7d7c384f35a5afafc10987068aeb683a6834b09388d86b12959210190f", // txid
-    index: 0, // vout index
-    nonWitnessUtxo: Buffer.from(inputTxHex, "hex"), // Full raw transaction hex
+    hash: "2e389c7d7c384f35a5afafc10987068aeb683a6834b09388d86b12959210190f",
+    index: 0,
+    nonWitnessUtxo: Buffer.from(inputTxHex, "hex"),
   });
   
-  // Define Output - Pay 5 BTC to recipient
-  const recipientAddress = "2MxYw5Ucck64XAKL1VMraz3AxKgwZfo6kxz"; // P2SH address
-  const amountToSend = 5_00000000; // 5 BTC in satoshis
+  const recipientAddress = "mz8SbsgeyuVuV9dKgdKifcYgCLnNTB3uYv"; // Ensure correct address type
+  const amountToSend = 5_00000000;
   
   psbt.addOutput({
     address: recipientAddress,
-    value: amountToSend, // 5 BTC in satoshis
+    value: amountToSend,
   });
   
-  // Define Change Output - Send remaining BTC back to sender
-  const totalInputAmount = 20_00000000; // 20 BTC in satoshis
-  const estimatedFee = 10000; // Example fee in satoshis (adjust based on fee rates)
+  const totalInputAmount = 20_00000000;
+  const estimatedFee = 10000;
   const changeAmount = totalInputAmount - amountToSend - estimatedFee;
-  
-  const changeAddress = "mz8SbsgeyuVuV9dKgdKifcYgCLnNTB3uYv"; // Your change address (modify accordingly)
+  const changeAddress = "mz8SbsgeyuVuV9dKgdKifcYgCLnNTB3uYv";
   
   if (changeAmount > 0) {
     psbt.addOutput({
       address: changeAddress,
-      value: changeAmount, // Change amount after paying fee
+      value: changeAmount,
     });
   }
   
-  // Log the PSBT Base64 format (before signing)
-  console.log("PSBT (Unsigned):", psbt.toBase64());
-  
-
-  psbt.addOutput({
-    address: 'mz8SbsgeyuVuV9dKgdKifcYgCLnNTB3uYv',
-    value: 10000,
-  });
-
-  // Sign the transaction
-  var sighash = psbt.__CACHE.__TX.hashForSignature(
+  // Correct way to get sighash for HSM signing
+  const sighash = psbt.__CACHE.__TX.hashForSignature(
     0,
     psbt.__CACHE.__TX.ins[0].script,
-    0,
     bitcoin.Transaction.SIGHASH_ALL
   );
+  
+  // Sign with HSM (ensure proper output format)
   pkcs11Lib.C_SignInit(
     session,
     { mechanism: pkcs11.CKM_ECDSA },
@@ -141,43 +128,33 @@ try {
   );
   var txSignature = Buffer.alloc(64);
   pkcs11Lib.C_Sign(session, sighash, txSignature);
-  // Add the signature to the input
-  var signatureScript = bitcoin.script.signature.encode(
-    txSignature,
-    bitcoin.Transaction.SIGHASH_ALL
-  );
-  psbt.updateInput(0, {
-    partialSig: [
-      {
-        pubkey: Buffer.from(compressedPublicKey),
-        signature: Buffer.from(signatureScript),
-      },
-    ],
-  });
-  psbt.updateInput(0, {
-    finalScriptSig: bitcoin.script.compile([
-      bitcoin.script.signature.encode(
-        txSignature,
-        bitcoin.Transaction.SIGHASH_ALL
-      ),
-      Buffer.from(compressedPublicKey),
-    ]),
-  });
-  var tx = psbt.extractTransaction(true);
-  console.log('Signed Transaction:', tx.toHex());
 
-  // // broadcast the transaction using bitcoin core
-  // exec(
-  //   `bitcoin-cli -regtest sendrawtransaction ${tx.toHex()}`,
-  //   (err, stdout, stderr) => {
-  //     if (err) {
-  //       console.error('Error:', err);
-  //       console.error('stderr:', stderr);
-  //       return;
-  //     }
-  //     console.log('Transaction ID:', stdout);
-  //   }
-  // );
+  const derSignature = bitcoin.script.signature.encode(txSignature, bitcoin.Transaction.SIGHASH_ALL);
+  
+  // Update PSBT with the correct signature format
+  psbt.updateInput(0, {
+    partialSig: [{ pubkey: Buffer.from(compressedPublicKey), signature: derSignature }],
+  });
+  
+  // Finalize transaction
+  psbt.finalizeInput(0);
+  var tx = psbt.extractTransaction();
+  
+  console.log("Signed Transaction:", tx.toHex());
+  
+
+  // broadcast the transaction using bitcoin core
+  exec(
+    `bitcoin-cli -regtest sendrawtransaction ${tx.toHex()}`,
+    (err, stdout, stderr) => {
+      if (err) {
+        console.error('Error:', err);
+        console.error('stderr:', stderr);
+        return;
+      }
+      console.log('Transaction ID:', stdout);
+    }
+  );
 
 
   pkcs11Lib.C_Logout(session);
