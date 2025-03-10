@@ -66,6 +66,13 @@ try {
   console.log('Public Key:', compressedPublicKey.toString('hex'));
   pkcs11Lib.C_FindObjectsFinal(session);
 
+  // Generate Bitcoin address (Bitcoin uses secp256k1)
+  const address = bitcoin.payments.p2pkh({
+    pubkey: Buffer.from(compressedPublicKey),
+    network: bitcoin.networks.regtest, // Change to bitcoin.networks.bitcoin for mainnet
+  }).address;
+  console.log('Bitcoin Address:', address);
+
   pkcs11Lib.C_Logout(session);
   pkcs11Lib.C_CloseSession(session);
   console.log('Session closed.');

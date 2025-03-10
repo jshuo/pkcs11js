@@ -3,11 +3,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var pkcs11 = require("pkcs11js");
 var bitcoin = require("bitcoinjs-lib");
 var crypto_1 = require("crypto");
+const { v4: uuidv4 } = require('uuid');
 // Initialize PKCS#11
 var pkcs11Lib = new pkcs11.PKCS11();
 pkcs11Lib.load("/usr/local/lib/softhsm/libsofthsm2.so");
+// pkcs11Lib.load("/home/secux/workspaces/cryptoauthlib/build/libcryptoauth.so");
+
 pkcs11Lib.C_Initialize();
 try {
+      // Add mID
+    let mID = uuidv4();
+    console.log('mID:', mID);
     // Open a session and login
     var slot = pkcs11Lib.C_GetSlotList(true)[0];
     var session = pkcs11Lib.C_OpenSession(slot, pkcs11.CKF_SERIAL_SESSION | pkcs11.CKF_RW_SESSION);
@@ -16,19 +22,22 @@ try {
     var keys = pkcs11Lib.C_GenerateKeyPair(session, { mechanism: pkcs11.CKM_ECDSA_KEY_PAIR_GEN }, [
         { type: pkcs11.CKA_CLASS, value: pkcs11.CKO_PUBLIC_KEY },
         { type: pkcs11.CKA_ECDSA_PARAMS, value: Buffer.from([0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A]) }, // secp256k1 curve OID
-        { type: pkcs11.CKA_LABEL, value: "MyKeyLabel" },
+        { type: pkcs11.CKA_LABEL, value: "jshuo" },
         { type: pkcs11.CKA_DERIVE, value: true },
-        // { type: pkcs11.CKA_TOKEN, value: true }
+        { type: pkcs11.CKA_ID, value: Buffer.from(mID) }, // Add mID
+        { type: pkcs11.CKA_TOKEN, value: true } //Persistence: Token objects are stored on the token and are not lost when the session ends or the device is powered off.
     ], [
         { type: pkcs11.CKA_CLASS, value: pkcs11.CKO_PRIVATE_KEY },
-        { type: pkcs11.CKA_LABEL, value: "MyKeyLabel" },
+        { type: pkcs11.CKA_LABEL, value: "jshuo" },
         { type: pkcs11.CKA_DERIVE, value: true },
-        // { type: pkcs11.CKA_TOKEN, value: true }
+        { type: pkcs11.CKA_ID, value: Buffer.from(mID) }, // Add mID
+        { type: pkcs11.CKA_TOKEN, value: true }
     ]);
+  
     // Find the public key object
     pkcs11Lib.C_FindObjectsInit(session, [
         { type: pkcs11.CKA_CLASS, value: pkcs11.CKO_PUBLIC_KEY },
-        { type: pkcs11.CKA_LABEL, value: "MyKeyLabel" },
+        { type: pkcs11.CKA_LABEL, value: "jshuo" },
     ]);
     var publicKeyHandle = pkcs11Lib.C_FindObjects(session, 1)[0];
     pkcs11Lib.C_FindObjectsFinal(session);
@@ -49,13 +58,13 @@ try {
     // Generate Bitcoin address (Bitcoin uses secp256k1)
     var address = bitcoin.payments.p2pkh({
         pubkey: compressedKey,
-        network: bitcoin.networks.testnet, // Change to bitcoin.networks.bitcoin for mainnet
+        network: bitcoin.networks.regtest, // Change to bitcoin.networks.bitcoin for mainnet
     }).address;
     console.log('Bitcoin Address:', address);
     // Sign a message
     var message = Buffer.from('Hello, world!');
     // Create a Bitcoin transaction
-    var psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
+    var psbt = new bitcoin.Psbt({ network: bitcoin.networks.regtest });
     psbt.addInput({
         hash: '7d067b4a697a09d2c3cff7d4d9506c9955e93bff41bf82d439da7d030382bc3e',
         index: 0,

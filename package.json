@@ -46,6 +46,7 @@
   "author": "PeculiarVentures",
   "license": "MIT",
   "devDependencies": {
+    "@types/bitcoinjs-lib": "^5.0.4",
     "@types/mocha": "^10.0.7",
     "@types/node": "^22.5.1",
     "mocha": "^10.7.3",
@@ -72,5 +73,27 @@
   "funding": {
     "type": "github",
     "url": "https://github.com/sponsors/PeculiarVentures"
+  },
+  "dependencies": {
+    "@ethereumjs/common": "^4.4.0",
+    "@ethereumjs/tx": "^5.4.0",
+    "axios": "^1.7.9",
+    "bignumber.js": "^9.1.2",
+    "bip32": "^5.0.0-rc.0",
+    "bitcoinjs-lib": "^6.1.7",
+    "bn.js": "^5.2.1",
+    "ecpair": "^3.0.0-rc.0",
+    "elliptic": "^6.6.1",
+    "eth-crypto": "^2.7.0",
+    "ethereumjs-tx": "^2.1.2",
+    "ethereumjs-util": "^7.1.5",
+    "graphene-pk11": "^2.3.6",
+    "js-sha3": "^0.9.3",
+    "pkcs11js": "^2.1.6",
+    "prompt-sync": "^4.2.0",
+    "punycode": "^2.3.1",
+    "secrets.js-grempe": "^2.0.0",
+    "tiny-secp256k1": "^2.2.3",
+    "web3": "^4.16.0"
   }
 }
