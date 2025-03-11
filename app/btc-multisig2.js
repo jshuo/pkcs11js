@@ -3,6 +3,7 @@ const bitcoin = require('bitcoinjs-lib');
 const ECPairFactory = require('ecpair').ECPairFactory;
 const ecc = require('tiny-secp256k1');
 const { exec } = require('child_process');
+const { execSync } = require('child_process');
 const axios = require('axios');
 
 // Bitcoin Core RPC Credentials (update if needed)
@@ -20,6 +21,30 @@ const regtest = {
   scriptHash: 0xc4,
   wif: 0xef,
 };
+
+function getUTXOs(address) {
+  try {
+    // Run scantxoutset to find UTXOs for the given address
+    const command = `bitcoin-cli -regtest scantxoutset "start" '[{"desc": "addr(${address})"}]'`;
+    const output = execSync(command, { encoding: 'utf8' });
+
+    // Parse the JSON response
+    const result = JSON.parse(output);
+
+    if (!result.success) {
+      console.error('Failed to scan UTXO set:', result);
+      return [];
+    }
+
+    // Filter UTXOs where amount > 0
+    const utxos = result.unspents.filter((utxo) => Math.round(utxo.amount) > 1);
+
+    return utxos;
+  } catch (error) {
+    console.error('Error running scantxoutset:', error.message);
+    return [];
+  }
+}
 
 var pkcs11Lib = new pkcs11.PKCS11();
 pkcs11Lib.load('/usr/local/lib/softhsm/libsofthsm2.so');
@@ -51,7 +76,7 @@ try {
   console.log('Token Label:', tokenInfo.label);
   // Look-up key pair by id
   let mID =
-    '66646566356137372d643634312d346334392d393738332d666439643836383462396534'; // ID from pkcs11-tool output
+    '66353334336463372d333732622d346531312d383165392d366135633339383461666138'; // ID from pkcs11-tool output
   // get public key
   let hsmPbKeys = pkcs11Lib.C_FindObjectsInit(session, [
     { type: pkcs11.CKA_ID, value: Buffer.from(mID, 'hex') },
@@ -61,7 +86,7 @@ try {
   let hsmPbKeyAttr = pkcs11Lib.C_GetAttributeValue(session, hsmPbKey, [
     { type: pkcs11.CKA_EC_POINT },
   ])[0];
-  
+
   // Finalize the previous find operation
   pkcs11Lib.C_FindObjectsFinal(session);
 
@@ -77,75 +102,78 @@ try {
   compressedPublicKey = ecc.pointCompress(uncompressedPublicKey, true);
   pkcs11Lib.C_FindObjectsFinal(session);
 
-  const address = bitcoin.payments.p2pkh({
+  const bitcoinAddress = bitcoin.payments.p2pkh({
     pubkey: Buffer.from(compressedPublicKey),
-    network: bitcoin.networks.regtest, // Change for mainnet
+    network: regtest,
   }).address;
-  console.log("Bitcoin Address:", address);
-  
-  var psbt = new bitcoin.Psbt({ network: bitcoin.networks.regtest });
-  
-  const inputTxHex = "02000000000104498a73c6988bb4832f7135ba6b015399a29bd892898f536dd01e63a1a4cc6cad0000000017160014010cf16a229a6e0b993206e745c7396bc7ec195afdffffff121e85892be6a3b73e92a7ce3f409dfca81f4117320c53b500dadc59f309a1350000000017160014a910b7e5baaadc15aaaa080104b36bf16dcc19b2fdffffff22dc63853cb218a62c2dd1534231c47e3be98493942046d3eca7fc51a74335240000000017160014587f8dbab23108a1a81596f3c809e857de1aa07bfdfffffff8cb00d9628815bb20eed0b9fafc4dac08f2393aa481ceaa49a962b811b44682000000001716001419bdd57fcc6a1938095e6fc5848aac9294119d26fdffffff0200943577000000001976a914cc2873d569108254e4e6fb29ac2994dd8175b52c88acc6b4ae03000000001976a9148d66427bcd8cd08d4d6b47d681839c1850afa74288ac0247304402203a606b7539d22c893bf28df0a5ca2539076150295cbec8685e899ec597b758ed0220147ddf5e28216e607650188b8e70ae59c2471191c02054267ff685da7b1bc3880121020125ec401c3c68d13356cce8eabb8fe6b33792bf08bf9db583665793bf5c24040247304402200366ce1bfb5aab265dfa1f8b58953f135f1cd27f34679a39c6fab8c0d64cb66d02204aff8552a6c25a9d39df7e4f3baab33d817159bb938d38fc83ec67c611070ec301210365352b2d71c520fd6549e3c1eac059bd1721f921c2842e1212518dbf1bd7723f0246304302202ddda17edf25b68d53fc239b439839377e1c7c4ead80c105ac8a3328c1bfbc35021f429144133e63f831ba600d896667ac17af9fe53b82fc895d936529fc9c3849012102295438dfbf4a5e6cc9cd8151ca2b3b644626ee6a8a166570f5783e521e492d71024730440220656f99d5bca7f3bed28360c62f18c6075cc92eb3967bf4bb845522030a7325c0022020409215b89a9e3a4132365932e9be43a011d0a7a4c2b031997bbd7b06876617012102bde436354aa78c867549d9fecbbd8d41ca2d564dd769ca52ea647c1c3a8cd57c212a0000"; // Ensure full raw transaction hex
-  
+
+  console.log('Bitcoin Address:', bitcoinAddress);
+
+  execSync(`bitcoin-cli -regtest generatetoaddress  2  "${bitcoinAddress}"`);
+
+  const utxos = getUTXOs(bitcoinAddress);
+
+  console.log('UTXOs with amount > 0:', utxos);
+  // Initialize Psbt (Partially Signed Bitcoin Transaction)
+  const psbt = new bitcoin.Psbt({ network: regtest });
+
+  const prevTxHex = execSync(
+    `bitcoin-cli -regtest getrawtransaction ${utxos[0].txid}`,
+    { encoding: 'utf8' }
+  ).trim();
+
   psbt.addInput({
-    hash: "2e389c7d7c384f35a5afafc10987068aeb683a6834b09388d86b12959210190f",
-    index: 0,
-    nonWitnessUtxo: Buffer.from(inputTxHex, "hex"),
+    hash: utxos[0].txid,
+    index: utxos[0].vout,
+    nonWitnessUtxo: Buffer.from(prevTxHex, 'hex'),
   });
-  
-  const recipientAddress = "mz8SbsgeyuVuV9dKgdKifcYgCLnNTB3uYv"; // Ensure correct address type
-  const amountToSend = 5_00000000;
-  
+
+  const recipientAddress = bitcoinAddress; // Ensure correct address type
+  const senderAddress = bitcoinAddress;
+  const amountToSend = Math.round((utxos[0].amount - 0.001) * 1e8); // Amount to send in satoshis (e.g., 0.0999 BTC)
+
+  const estimatedFee = 10000;
+
+  // Add output to recipient
   psbt.addOutput({
     address: recipientAddress,
     value: amountToSend,
   });
-  
-  const totalInputAmount = 20_00000000;
-  const estimatedFee = 10000;
-  const changeAmount = totalInputAmount - amountToSend - estimatedFee;
-  const changeAddress = "mz8SbsgeyuVuV9dKgdKifcYgCLnNTB3uYv";
-  
-  if (changeAmount > 0) {
+
+  // (Optional) Change address back to sender
+  const change =
+    Math.round(utxos[0].amount * 1e8) - amountToSend - estimatedFee;
+  if (change > 0) {
     psbt.addOutput({
-      address: changeAddress,
-      value: changeAmount,
+      address: senderAddress,
+      value: change,
     });
   }
-  
-  // Correct way to get sighash for HSM signing
-  const sighash = psbt.__CACHE.__TX.hashForSignature(
-    0,
-    psbt.__CACHE.__TX.ins[0].script,
-    bitcoin.Transaction.SIGHASH_ALL
-  );
-  
-  // Sign with HSM (ensure proper output format)
-  pkcs11Lib.C_SignInit(
-    session,
-    { mechanism: pkcs11.CKM_ECDSA },
-    hsmPvKey
-  );
-  var txSignature = Buffer.alloc(64);
-  pkcs11Lib.C_Sign(session, sighash, txSignature);
 
-  const derSignature = bitcoin.script.signature.encode(txSignature, bitcoin.Transaction.SIGHASH_ALL);
-  
-  // Update PSBT with the correct signature format
-  psbt.updateInput(0, {
-    partialSig: [{ pubkey: Buffer.from(compressedPublicKey), signature: derSignature }],
+  // Sign with HSM (ensure proper output format)
+  pkcs11Lib.C_SignInit(session, { mechanism: pkcs11.CKM_ECDSA }, hsmPvKey);
+
+  // Sign the transaction
+
+  psbt.signInput(0, {
+    publicKey: Buffer.from(compressedPublicKey),
+    sign: (hash) => {
+      console.log('hash:', hash.toString('hex'));
+      var txSignature = Buffer.alloc(64);
+      const signature = pkcs11Lib.C_Sign(session, hash, txSignature); // Call the HSM to sign the hash
+      console.log('signature:', signature.toString('hex'));
+      return Buffer.from(signature); // Return the signature as a buffer
+    },
   });
-  
-  // Finalize transaction
-  psbt.finalizeInput(0);
-  var tx = psbt.extractTransaction();
-  
-  console.log("Signed Transaction:", tx.toHex());
-  
+
+  psbt.finalizeAllInputs();
+
+  const rawTxHex = psbt.extractTransaction().toHex();
+  console.log('Signed Raw Transaction (hex):', rawTxHex);
 
   // broadcast the transaction using bitcoin core
   exec(
-    `bitcoin-cli -regtest sendrawtransaction ${tx.toHex()}`,
+    `bitcoin-cli -regtest sendrawtransaction ${rawTxHex}`,
     (err, stdout, stderr) => {
       if (err) {
         console.error('Error:', err);
@@ -155,7 +183,6 @@ try {
       console.log('Transaction ID:', stdout);
     }
   );
-
 
   pkcs11Lib.C_Logout(session);
   pkcs11Lib.C_CloseSession(session);
@@ -192,11 +219,11 @@ const { address, redeem } = bitcoin.payments.p2sh({
   network: regtest,
 });
 
-console.log('2-of-3 Multisig Address:', address);
-console.log('Redeem Script:', redeem.output.toString('hex'));
-console.log('Private Key 1 (WIF):', keyPair1.toWIF());
-console.log('Private Key 2 (WIF):', keyPair2.toWIF());
-console.log('Private Key 3 (WIF):', keyPair3.toWIF());
+// console.log('2-of-3 Multisig Address:', address);
+// console.log('Redeem Script:', redeem.output.toString('hex'));
+// console.log('Private Key 1 (WIF):', keyPair1.toWIF());
+// console.log('Private Key 2 (WIF):', keyPair2.toWIF());
+// console.log('Private Key 3 (WIF):', keyPair3.toWIF());
 
 // Send some funds to the multisig address
 exec(
