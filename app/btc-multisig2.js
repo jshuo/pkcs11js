@@ -227,7 +227,7 @@ const { address, redeem } = bitcoin.payments.p2sh({
 
 // Send some funds to the multisig address
 exec(
-  `bitcoin-cli -regtest -rpcwallet=test_wallet sendtoaddress ${address} 0.02`,
+  `bitcoin-cli -regtest -rpcwallet=test_wallet sendtoaddress ${address} 0.2`,
   (err, stdout, stderr) => {
     if (err) {
       console.error('Error:', err);
