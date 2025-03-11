@@ -4,6 +4,7 @@ const ECPairFactory = require('ecpair').ECPairFactory;
 const ecc = require('tiny-secp256k1');
 const ECPair = ECPairFactory(ecc);
 const { exec } = require('child_process');
+const axios = require('axios');
 
 // Bitcoin Core RPC Credentials (update if needed)
 const RPC_USER = 'secux';
@@ -26,6 +27,35 @@ const keyPair = ECPair.makeRandom({ network: regtest });
 console.log("Private Key (WIF):", keyPair.toWIF());
 console.log("Public Key:", keyPair.publicKey.toString('hex'));  // Compressed public key
 
+const { execSync } = require("child_process");
+
+function getUTXOs(address) {
+    try {
+        // Run scantxoutset to find UTXOs for the given address
+        const command = `bitcoin-cli -regtest scantxoutset "start" '[{"desc": "addr(${address})"}]'`;
+        const output = execSync(command, { encoding: "utf8" });
+
+        // Parse the JSON response
+        const result = JSON.parse(output);
+
+        if (!result.success) {
+            console.error("Failed to scan UTXO set:", result);
+            return [];
+        }
+
+        // Filter UTXOs where amount > 0
+        const utxos = result.unspents.filter(utxo => utxo.amount > 0);
+
+        return utxos;
+    } catch (error) {
+        console.error("Error running scantxoutset:", error.message);
+        return [];
+    }
+}
+
+// Example usage
+
+
 
 // Address derived from the key:
 const { address } = bitcoin.payments.p2pkh({ pubkey: Buffer.from(keyPair.publicKey), network: regtest });
@@ -39,16 +69,36 @@ console.log("Private Key (WIF):", keyPair2.toWIF());
 console.log("Public Key:", keyPair2.publicKey.toString('hex'));  // Compressed public key
 console.log("Address:", bitcoin.payments.p2pkh({ pubkey: Buffer.from(keyPair2.publicKey), network: regtest }).address);
 
-// Example UTXO from regtest wallet
+// Get UTXOs for a given address
+
+
+const bitcoinAddress = bitcoin.payments.p2pkh({ pubkey: Buffer.from(keyPair2.publicKey), network: regtest }).address;
+const utxos = getUTXOs(bitcoinAddress);
+
+console.log("UTXOs with amount > 0:", utxos);
+
+// find a UTXO with amount > 0 and use it as input for the transaction
+// For simplicity, we'll use the first UTXO in the list
+// You may need to select a UTXO with sufficient funds for the transaction
+// and handle multiple UTXOs if needed
+if (utxos.length === 0) {
+  console.error("No UTXOs found for the address:", bitcoinAddress);
+  return;
+}   
+
+// Use the first UTXO as input for the transaction
+// const utxo = utxos[0];
+// console.log("Selected UTXO:", utxo);
+
 const utxo = {
-  txId: 'f77aacdf414980ad8702b6ec0cab35734bb87656b26347475bbfa19787235ac2', // Replace with your UTXO's TXID
+  txId: '69156853f0332605f491c0015e212f8f247d92bd3f0d147edd7190cb10971414', // Replace with your UTXO's TXID
   vout: 1,                        // Output index
-  value: 20* 1e8,                // Amount in satoshis (e.g., 50 BTC in satoshis)
+  value: Math.round(19.9 * 1e8),                // Amount in satoshis (e.g., 50 BTC in satoshis)
 };
 
 // Recipient address (generate or use existing)
-const recipientAddress = 'mq9cNMM2EiUMh9L9nDBKi2BJ7MvbqYnkeL';
-const senderAddress = 'mq9cNMM2EiUMh9L9nDBKi2BJ7MvbqYnkeL';
+const recipientAddress = bitcoinAddress;
+const senderAddress = bitcoinAddress;
 // Transaction parameters
 const sendAmount = 0.0999 * 1e8; // Amount to send in satoshis (e.g., 0.0999 BTC)
 const fee = 10000;                // Fee in satoshis (0.0001 BTC)
@@ -58,7 +108,7 @@ const psbt = new bitcoin.Psbt({ network: regtest });
 
 // IMPORTANT: Fetch the raw hex of the previous transaction (`nonWitnessUtxo`)
 // You can get this from your regtest node: `bitcoin-cli -regtest getrawtransaction <txid>`
-const prevTxRawHex = "0200000000010664cadd20646d628117a2502ae8416a5aaac5eba82fe8ecff8aa115acf2365d360000000017160014753524243e8ea77e83b45dd7709bb040ac5b0de8fdffffff31fddd2561265165a96d0cd02f58edf4fb341d8292aa43eff0283ae0474bbf5c0000000017160014609d0c3de2723497e8f6edca25db358269d606eafdffffff0653f52771e08b5e0f003c889e4199fe48207f6b112f0c8bef7632745ad3fe940000000017160014593f20fef0e0342e85e32317fc0c4c84771c448dfdffffffca4b69b8c79cb3e826d4522b002a2aa26aa7bfb05df1b60fe70c6b4c16a6f4f30000000017160014442d822e04cbe6e033afb7dffe29c5816f4b49d0fdffffff575f39d3b16ec82deb8aea12e4bb0f8347d0ce1a7f53be9fb04f897aa5caea0200000000171600142a8c2bae9823afd0a1ddd278ede154af72aaf7c8fdffffff24bb9dde057f831d5638abd168f3418864dde57852bfd21530da694ba8522bbc0100000017160014f769b16752135d9f6de04684828e876254e259cafdffffff021a8e0007000000001976a9142e8837fea70b04856ecd0089a715a9aa872f251888ac00943577000000001976a91469a7e3ab58ad5c1abd8712120607c197334ec7a788ac0247304402206fd012c2760081046bcc21501a900e1e7b5c4d31837f74f6b8a78feed2dd1f78022054c889af1790379c728dba98855b782b984e6ffe1f2caffd1d31143445bad3c5012102c8a97e37098289ef7e854a4bd5445b6e3c9ac01017d6c0a27f961d77a1908a6402473044022070f4f0c3b9b595704d6deb11d0b65344cf76632af3c861356498ccb101059a5202205926fe0d1809ba91396865dffe1d6f13f8f5e28dc17da0b0a072ffe2737927a3012103c6d583ce2c5c9b1975b1ef106945647954627861939cde51ec9c1a8387ebf21d02473044022055aa73560082d39333082b170317c217555481beb3253c856a21dda186b9ba3902203037b0279e05956a5f44debae65f0cd411337f5ab582b612f81bea2728d8a0870121023485de3e636d23b5894e54fac32b0d00e051d358fe46cc498a0329f70acbdf090247304402200857f6ebb8ecc57e8e33d53ec46ccf5e7dbdbcd1800f4a7235a8883c5719b87702200ebefef719631c05a4b95c9862c9c1325a0e79f35bd8a42f643399fcda27223a012102ec75e5aca4bc10a700bd0b546637848c622a5dc5589cf2d2414791c7346cad19024730440220272b23bddba98636b3f1f6acf1f1830d0fcd8933959dc3b8ba0cf6df598f7d9502201f632f69e8d33c636e87496ad768c3957080e338a504c0a1e46978f064d9316e012102e4869f2978f4a4f8147c6ff3cd561941a2c1bf0d415675961229610f355faf610247304402203084b71b942b132a5cca3831c2b7c2fb1076c08da3326891d71408a6003c5b1202203868fddcb2c3b7e3970c4592cc97f7581ea5f004b91369cd0f51302f329e9bd80121022ec451857397b084b6316a80a267a104e06d420bce1ffe383145db9e0023bafffb2a0000";
+const prevTxRawHex = "0200000001c25a238797a1bf5b474763b25676b84b7335ab0cecb60287ad804941dfac7af7010000006b4830450221008f4cbf3d9a15b729e7907cc532ec38586ae5ef183b8ee48672ab8847a4dffa4a02207737ff55ff75dddcefaf53b96045d65576c564299fb507c5aaa0b1bd280ee1af0121022754fdf06dbf514c5a0bcb82a10f20777f59ee379c608764f5f21d43c984c296ffffffff02706f9800000000001976a91469a7e3ab58ad5c1abd8712120607c197334ec7a788ac80fd9c76000000001976a91469a7e3ab58ad5c1abd8712120607c197334ec7a788ac00000000";
 
 // Add UTXO as input
 psbt.addInput({
@@ -82,15 +132,40 @@ if (change > 0) {
   });
 }
 
+// get sighash for private key to sign
+const hashType = bitcoin.Transaction.SIGHASH_ALL;
+
+
 // Sign the transaction
 
 psbt.signInput(0, {
     publicKey: Buffer.from(keyPair2.publicKey),
     sign: (hash) => {
+        console.log('hash:', hash.toString('hex'));
         const signature = keyPair2.sign(hash);
         return Buffer.from(signature); 
     },
 });
+
+
+// utxos.forEach((_, index) => {
+//     psbt.signInput(index, {
+//         publicKey: Buffer.from(keyPair.publicKey),
+//         sign: (hash) => {
+//             const signature = keyPair.sign(hash);
+//             return Buffer.from(signature); 
+//         },
+//     });
+// });
+
+
+// psbt.signInput(0, {
+//     publicKey: hsmGetPublicKey(), // Function to retrieve the public key from HSM
+//     sign: async (hash) => {
+//         const signature = await hsmSign(hash); // Call the HSM to sign the hash
+//         return Buffer.from(signature); // Return the signature as a buffer
+//     },
+// });
 
 // Finalize the transaction
 
