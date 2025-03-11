@@ -5,6 +5,7 @@ const ecc = require('tiny-secp256k1');
 const { exec } = require('child_process');
 const { execSync } = require('child_process');
 const axios = require('axios');
+const BN = require('bn.js');
 
 // Bitcoin Core RPC Credentials (update if needed)
 const RPC_USER = 'secux';
@@ -160,12 +161,37 @@ try {
     sign: (hash) => {
       console.log('hash:', hash.toString('hex'));
       var txSignature = Buffer.alloc(64);
-      const signature = pkcs11Lib.C_Sign(session, hash, txSignature); // Call the HSM to sign the hash
+      let signature = pkcs11Lib.C_Sign(session, hash, txSignature); // Call the HSM to sign the hash
       console.log('signature:', signature.toString('hex'));
-      return Buffer.from(signature); // Return the signature as a buffer
+  
+      const r = signature.slice(0, 32);
+      let s = signature.slice(32, 64);
+  
+      console.log('r:', r.toString('hex'));
+      console.log('s:', s.toString('hex'));
+  
+     // Convert s to a BN object correctly
+     const n = new BN(
+      'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141',
+      16
+    );
+
+    let sBN = new BN(s); // Correctly convert Buffer to BN
+    if (sBN.cmp(n.shrn(1)) > 0) {
+      sBN = n.sub(sBN);
+    }
+
+    // Convert back to Buffer
+    s = sBN.toArrayLike(Buffer, 'be', 32);
+
+    // Concatenate R and S
+    signature = Buffer.concat([r, s]);
+    console.log('final signature:', signature.toString('hex'));
+
+    return signature; // Return the signature as a buffer
     },
   });
-
+  
   psbt.finalizeAllInputs();
 
   const rawTxHex = psbt.extractTransaction().toHex();
@@ -219,11 +245,11 @@ const { address, redeem } = bitcoin.payments.p2sh({
   network: regtest,
 });
 
-// console.log('2-of-3 Multisig Address:', address);
-// console.log('Redeem Script:', redeem.output.toString('hex'));
-// console.log('Private Key 1 (WIF):', keyPair1.toWIF());
-// console.log('Private Key 2 (WIF):', keyPair2.toWIF());
-// console.log('Private Key 3 (WIF):', keyPair3.toWIF());
+console.log('2-of-3 Multisig Address:', address);
+console.log('Redeem Script:', redeem.output.toString('hex'));
+console.log('Private Key 1 (WIF):', keyPair1.toWIF());
+console.log('Private Key 2 (WIF):', keyPair2.toWIF());
+console.log('Private Key 3 (WIF):', keyPair3.toWIF());
 
 // Send some funds to the multisig address
 exec(
