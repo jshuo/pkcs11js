@@ -1,4 +1,4 @@
-var pkcs11 = require('pkcs11js');
+const pkcs11 = require('pkcs11js');
 const bitcoin = require('bitcoinjs-lib');
 const ECPairFactory = require('ecpair').ECPairFactory;
 const ecc = require('tiny-secp256k1');
@@ -79,7 +79,7 @@ try {
   let mID =
     '66353334336463372d333732622d346531312d383165392d366135633339383461666138'; // ID from pkcs11-tool output
   // get public key
-  let hsmPbKeys = pkcs11Lib.C_FindObjectsInit(session, [
+   pkcs11Lib.C_FindObjectsInit(session, [
     { type: pkcs11.CKA_ID, value: Buffer.from(mID, 'hex') },
     { type: pkcs11.CKA_CLASS, value: pkcs11.CKO_PUBLIC_KEY },
   ]);
@@ -99,7 +99,7 @@ try {
   let hsmPvKey = pkcs11Lib.C_FindObjects(session, 1)[0];
   console.log('Private Key Handle:', hsmPvKey);
 
-  const uncompressedPublicKey = Buffer.from(hsmPbKeyAttr.value).slice(2); // Remove the first two bytes (0x04 prefix)
+  const uncompressedPublicKey = Buffer.from(hsmPbKeyAttr.value).subarray(2); // Remove the first two bytes (0x04 prefix)
   compressedPublicKey = ecc.pointCompress(uncompressedPublicKey, true);
   pkcs11Lib.C_FindObjectsFinal(session);
 
@@ -164,8 +164,8 @@ try {
       let signature = pkcs11Lib.C_Sign(session, hash, txSignature); // Call the HSM to sign the hash
       console.log('signature:', signature.toString('hex'));
   
-      const r = signature.slice(0, 32);
-      let s = signature.slice(32, 64);
+      const r = signature.subarray(0, 32);
+      let s = signature.subarray(32, 64);
   
       console.log('r:', r.toString('hex'));
       console.log('s:', s.toString('hex'));
