@@ -44,7 +44,7 @@ function getUTXOs(address) {
         }
 
         // Filter UTXOs where amount > 0
-        const utxos = result.unspents.filter(utxo => utxo.amount > 0);
+        const utxos = result.unspents.filter(utxo => Math.round(utxo.amount) > 1);
 
         return utxos;
     } catch (error) {
@@ -59,20 +59,24 @@ function getUTXOs(address) {
 
 // Address derived from the key:
 const { address } = bitcoin.payments.p2pkh({ pubkey: Buffer.from(keyPair.publicKey), network: regtest });
-console.log("Address:", address);
+// console.log("Address:", address);
 
 // generate a new key pair from a known private key (WIF)
 const privateKey
   = 'cSDE1zzvpATcyp6U2ABdp7BRPkKUd85tfxfALvKhVzVjj44LSzFa';
 const keyPair2 = ECPair.fromWIF(privateKey, regtest);
-console.log("Private Key (WIF):", keyPair2.toWIF());
-console.log("Public Key:", keyPair2.publicKey.toString('hex'));  // Compressed public key
-console.log("Address:", bitcoin.payments.p2pkh({ pubkey: Buffer.from(keyPair2.publicKey), network: regtest }).address);
+// console.log("Private Key (WIF):", keyPair2.toWIF());
+// console.log("Public Key:", keyPair2.publicKey.toString('hex'));  // Compressed public key
+// console.log("Address:", bitcoin.payments.p2pkh({ pubkey: Buffer.from(keyPair2.publicKey), network: regtest }).address);
 
 // Get UTXOs for a given address
 
 
 const bitcoinAddress = bitcoin.payments.p2pkh({ pubkey: Buffer.from(keyPair2.publicKey), network: regtest }).address;
+
+// perform bitcoin-cli -regtest generatetoaddress  2  "mq9cNMM2EiUMh9L9nDBKi2BJ7MvbqYnkeL"
+execSync(`bitcoin-cli -regtest generatetoaddress  2  "${bitcoinAddress}"`);
+
 const utxos = getUTXOs(bitcoinAddress);
 
 console.log("UTXOs with amount > 0:", utxos);
@@ -89,18 +93,23 @@ if (utxos.length === 0) {
 // Use the first UTXO as input for the transaction
 // const utxo = utxos[0];
 // console.log("Selected UTXO:", utxo);
+// get the previous txhex from the first utxo 
+const prevTxHex = execSync(`bitcoin-cli -regtest getrawtransaction ${utxos[0].txid}`, { encoding: 'utf8' }).trim();
+console.log('prevTxHex:', prevTxHex);
+
+
 
 const utxo = {
-  txId: '69156853f0332605f491c0015e212f8f247d92bd3f0d147edd7190cb10971414', // Replace with your UTXO's TXID
-  vout: 1,                        // Output index
-  value: Math.round(19.9 * 1e8),                // Amount in satoshis (e.g., 50 BTC in satoshis)
+  txId: utxos[0].txid, // Replace with your UTXO's TXID
+  vout: utxos[0].vout,                        // Output index
+  value: Math.round(utxos[0].amount * 1e8),                // Amount in satoshis (e.g., 50 BTC in satoshis)
 };
 
 // Recipient address (generate or use existing)
 const recipientAddress = bitcoinAddress;
 const senderAddress = bitcoinAddress;
 // Transaction parameters
-const sendAmount = 0.0999 * 1e8; // Amount to send in satoshis (e.g., 0.0999 BTC)
+const sendAmount = Math.round((utxos[0].amount - 0.001) * 1e8); // Amount to send in satoshis (e.g., 0.0999 BTC)
 const fee = 10000;                // Fee in satoshis (0.0001 BTC)
 
 // Initialize Psbt (Partially Signed Bitcoin Transaction)
@@ -108,13 +117,13 @@ const psbt = new bitcoin.Psbt({ network: regtest });
 
 // IMPORTANT: Fetch the raw hex of the previous transaction (`nonWitnessUtxo`)
 // You can get this from your regtest node: `bitcoin-cli -regtest getrawtransaction <txid>`
-const prevTxRawHex = "0200000001c25a238797a1bf5b474763b25676b84b7335ab0cecb60287ad804941dfac7af7010000006b4830450221008f4cbf3d9a15b729e7907cc532ec38586ae5ef183b8ee48672ab8847a4dffa4a02207737ff55ff75dddcefaf53b96045d65576c564299fb507c5aaa0b1bd280ee1af0121022754fdf06dbf514c5a0bcb82a10f20777f59ee379c608764f5f21d43c984c296ffffffff02706f9800000000001976a91469a7e3ab58ad5c1abd8712120607c197334ec7a788ac80fd9c76000000001976a91469a7e3ab58ad5c1abd8712120607c197334ec7a788ac00000000";
+// const prevTxRawHex = "0200000001c25a238797a1bf5b474763b25676b84b7335ab0cecb60287ad804941dfac7af7010000006b4830450221008f4cbf3d9a15b729e7907cc532ec38586ae5ef183b8ee48672ab8847a4dffa4a02207737ff55ff75dddcefaf53b96045d65576c564299fb507c5aaa0b1bd280ee1af0121022754fdf06dbf514c5a0bcb82a10f20777f59ee379c608764f5f21d43c984c296ffffffff02706f9800000000001976a91469a7e3ab58ad5c1abd8712120607c197334ec7a788ac80fd9c76000000001976a91469a7e3ab58ad5c1abd8712120607c197334ec7a788ac00000000";
 
 // Add UTXO as input
 psbt.addInput({
-  hash: utxo.txId,
-  index: utxo.vout,
-  nonWitnessUtxo: Buffer.from(prevTxRawHex, 'hex'),
+  hash: utxos[0].txid,
+  index: utxos[0].vout,
+  nonWitnessUtxo: Buffer.from(prevTxHex, 'hex'),
 });
 
 // Add output to recipient
